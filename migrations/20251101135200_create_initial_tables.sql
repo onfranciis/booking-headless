@@ -2,7 +2,7 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 CREATE TABLE
-    IF NOT EXISTS Users (
+    IF NOT EXISTS users (
         id UUID PRIMARY KEY DEFAULT uuid_generate_v4 (),
         username VARCHAR(255) NOT NULL UNIQUE,
         business_name VARCHAR(255) NOT NULL,
@@ -21,9 +21,9 @@ CREATE TABLE
     );
 
 CREATE TABLE
-    IF NOT EXISTS Auth (
+    IF NOT EXISTS auth (
         id UUID PRIMARY KEY DEFAULT uuid_generate_v4 (),
-        user_id UUID NOT NULL REFERENCES Users (id),
+        user_id UUID NOT NULL REFERENCES users (id),
         password_hash VARCHAR(512) NOT NULL,
         reset_token VARCHAR(512),
         reset_token_expiry TIMESTAMPTZ,
@@ -32,9 +32,9 @@ CREATE TABLE
     );
 
 CREATE TABLE
-    IF NOT EXISTS Services (
+    IF NOT EXISTS services (
         id UUID PRIMARY KEY DEFAULT uuid_generate_v4 (),
-        user_id UUID NOT NULL REFERENCES Users (id),
+        user_id UUID NOT NULL REFERENCES users (id),
         service_name VARCHAR(255) NOT NULL,
         description TEXT,
         price DECIMAL(10, 2),
@@ -45,10 +45,10 @@ CREATE TABLE
     );
 
 CREATE TABLE
-    IF NOT EXISTS Appointments (
+    IF NOT EXISTS appointments (
         id UUID PRIMARY KEY DEFAULT uuid_generate_v4 (),
-        service_id UUID NOT NULL REFERENCES Services (id),
-        business_id UUID NOT NULL REFERENCES Users (id),
+        service_id UUID NOT NULL REFERENCES services (id),
+        business_id UUID NOT NULL REFERENCES users (id),
         customer_name VARCHAR(255) NOT NULL,
         customer_email VARCHAR(255),
         customer_phone VARCHAR(20),

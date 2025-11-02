@@ -1,18 +1,12 @@
 use chrono::{DateTime, Utc};
+use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use sqlx::prelude::FromRow;
 use uuid::Uuid;
 
-#[derive(Deserialize)]
-pub struct CreateUser {
-    pub username: String,
-    pub business_name: String,
-    pub email: String,
-    pub location: Option<String>,
-    pub phone_number: Option<String>,
-    pub description: Option<String>,
-    pub phone_number_is_whatsapp: Option<bool>,
-}
+/* -------------------------------------------------------------------------- */
+/*                                      -                                     */
+/* -------------------------------------------------------------------------- */
 
 #[derive(Serialize, FromRow)]
 pub struct User {
@@ -31,4 +25,65 @@ pub struct User {
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
     pub last_login: Option<DateTime<Utc>>,
+}
+
+#[derive(Deserialize)]
+pub struct CreateUser {
+    pub username: String,
+    pub business_name: String,
+    pub email: String,
+    pub location: Option<String>,
+    pub phone_number: Option<String>,
+    pub description: Option<String>,
+    pub phone_number_is_whatsapp: Option<bool>,
+}
+
+#[derive(Deserialize)]
+pub struct UpdateUser {
+    pub username: Option<String>,
+    pub business_name: Option<String>,
+    pub email: Option<String>,
+    pub location: Option<String>,
+    pub phone_number: Option<String>,
+    pub description: Option<String>,
+    pub phone_number_is_whatsapp: Option<bool>,
+}
+
+/* -------------------------------------------------------------------------- */
+/*                                      -                                     */
+/* -------------------------------------------------------------------------- */
+/* -------------------------------------------------------------------------- */
+/*                                  SERVICES                                  */
+/* -------------------------------------------------------------------------- */
+/* -------------------------------------------------------------------------- */
+/*                                      -                                     */
+/* -------------------------------------------------------------------------- */
+
+#[derive(Serialize, FromRow)]
+pub struct Service {
+    pub id: Uuid,
+    pub user_id: Uuid,
+    pub service_name: String,
+    pub description: Option<String>,
+    pub price: Option<Decimal>,
+    pub duration_minutes: Option<i32>,
+    pub category: Option<String>,
+    pub created_at: Option<DateTime<Utc>>,
+    pub updated_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Deserialize)]
+pub struct CreateService {
+    pub user_id: Uuid,
+    pub service_name: String,
+    pub description: Option<String>,
+    pub price: Option<Decimal>,
+    pub duration_minutes: Option<i32>,
+    pub category: Option<String>,
+}
+
+#[derive(Serialize, FromRow)]
+pub struct UserWithServices {
+    pub user: User,
+    pub services: Vec<Service>,
 }
