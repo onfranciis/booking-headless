@@ -205,15 +205,15 @@ async fn update_user(
     match sqlx::query_as!(
         User,
         r#"
-        UPDATE users
-        SET
+        UPDATE users SET
             username = COALESCE($1, username),
             business_name = COALESCE($2, business_name),
             email = COALESCE($3, email),
             location = COALESCE($4, location),
             phone_number = COALESCE($5, phone_number),
             description = COALESCE($6, description),
-            phone_number_is_whatsapp = COALESCE($7, phone_number_is_whatsapp)
+            phone_number_is_whatsapp = COALESCE($7, phone_number_is_whatsapp),
+            updated_at = NOW()
         WHERE id = $8
         RETURNING *
         "#,

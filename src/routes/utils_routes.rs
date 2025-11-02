@@ -19,7 +19,7 @@ pub async fn not_found() -> impl Responder {
 }
 
 pub fn internal_server_error_response(message: String) -> HttpResponse {
-    println!("Internal Server Error: {}", message);
+    eprintln!("Internal Server Error: {}", message);
 
     HttpResponse::InternalServerError().json(ApiResponse::<()> {
         message: Some("Something went wrong on our end".to_string()),
