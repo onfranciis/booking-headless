@@ -82,6 +82,15 @@ pub struct CreateService {
     pub category: Option<String>,
 }
 
+#[derive(Deserialize)]
+pub struct UpdateService {
+    pub service_name: Option<String>,
+    pub description: Option<String>,
+    pub price: Option<Decimal>,
+    pub duration_minutes: Option<i32>,
+    pub category: Option<String>,
+}
+
 #[derive(Serialize, FromRow)]
 pub struct UserWithServices {
     pub user: User,

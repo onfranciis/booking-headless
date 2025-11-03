@@ -7,7 +7,7 @@ use crate::{
     utils::response_utils::{json_error_handler, path_error_handler},
 };
 use actix_web::{App, HttpServer, web};
-use routes::user_routes;
+use routes::{service_routes, user_routes};
 use sqlx::postgres::PgPoolOptions;
 use std::env;
 
@@ -42,6 +42,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(path_config)
             .app_data(json_config)
             .configure(user_routes::user_config)
+            .configure(service_routes::service_config)
             .service(home)
             .default_service(web::to(not_found))
     })
