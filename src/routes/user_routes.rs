@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::{
     routes::utils_routes::{conflict_reponse, internal_server_error_response, not_found_response},
     structs::{
-        db_struct::{CreateUser, Service, UpdateUser, User, UserWithServices},
+        db_struct::{Appointment, CreateUser, Service, UpdateUser, User, UserWithServices},
         response_struct::ApiResponse,
     },
 };
@@ -247,10 +247,52 @@ async fn update_user(
 /*                                      -                                     */
 /* -------------------------------------------------------------------------- */
 
+async fn get_appointments_for_user(
+    path: web::Path<Uuid>,
+    pool: web::Data<PgPool>,
+) -> impl Responder {
+    let user_id = path.into_inner();
+
+    match sqlx::query_as!(
+        Appointment,
+        r#"
+        SELECT * FROM appointments 
+        WHERE business_id = $1
+        ORDER BY appointment_time DESC
+        "#,
+        user_id
+    )
+    .fetch_all(pool.get_ref())
+    .await
+    {
+        Ok(appointments) => HttpResponse::Ok().json(ApiResponse {
+            success: true,
+            data: Some(appointments),
+            message: Some("Appointments retrieved successfully".to_string()),
+        }),
+
+        Err(e) => internal_server_error_response(e.to_string()),
+    }
+}
+
+/* -------------------------------------------------------------------------- */
+/*                                      -                                     */
+/* -------------------------------------------------------------------------- */
+/* -------------------------------------------------------------------------- */
+/*                                      -                                     */
+/* -------------------------------------------------------------------------- */
+/* -------------------------------------------------------------------------- */
+/*                                      -                                     */
+/* -------------------------------------------------------------------------- */
+
 pub fn user_config(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/users")
             .route("/with-services", web::get().to(get_all_users_with_services))
+            .route(
+                "/{id}/appointments",
+                web::get().to(get_appointments_for_user),
+            )
             .route("/{id}", web::get().to(get_user_by_id))
             .route("/{id}", web::patch().to(update_user))
             .route("", web::get().to(get_all_users))

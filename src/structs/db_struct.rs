@@ -96,3 +96,36 @@ pub struct UserWithServices {
     pub user: User,
     pub services: Vec<Service>,
 }
+
+/* -------------------------------------------------------------------------- */
+/*                                      -                                     */
+/* -------------------------------------------------------------------------- */
+/* -------------------------------------------------------------------------- */
+/*                                APPOINTMENTS                                */
+/* -------------------------------------------------------------------------- */
+/* -------------------------------------------------------------------------- */
+/*                                      -                                     */
+/* -------------------------------------------------------------------------- */
+
+#[derive(Serialize, FromRow)]
+pub struct Appointment {
+    pub id: Uuid,
+    pub service_id: Uuid,
+    pub business_id: Uuid,
+    pub customer_name: String,
+    pub customer_email: Option<String>,
+    pub customer_phone: Option<String>,
+    pub appointment_time: DateTime<Utc>,
+    pub created_at: Option<DateTime<Utc>>,
+    pub updated_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Deserialize)]
+pub struct CreateAppointment {
+    pub service_id: Uuid,
+    pub business_id: Uuid,
+    pub customer_name: String,
+    pub customer_email: Option<String>,
+    pub customer_phone: Option<String>,
+    pub appointment_time: DateTime<Utc>,
+}

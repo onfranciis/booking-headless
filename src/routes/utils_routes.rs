@@ -26,6 +26,14 @@ pub fn not_found_response(message: String) -> HttpResponse {
     })
 }
 
+pub fn bad_request_response(message: String) -> HttpResponse {
+    HttpResponse::BadRequest().json(ApiResponse::<()> {
+        success: false,
+        data: None,
+        message: Some(message),
+    })
+}
+
 pub fn conflict_reponse(message: String) -> HttpResponse {
     HttpResponse::Conflict().json(ApiResponse::<()> {
         success: false,
