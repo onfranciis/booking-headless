@@ -4,7 +4,7 @@ use crate::{
     middlewares::auth_middleware::AuthenticatedUser,
     routes::utils_routes::{conflict_reponse, internal_server_error_response, not_found_response},
     structs::{
-        db_struct::{Appointment, CreateUser, Service, UpdateUser, User, UserWithServices},
+        db_struct::{Appointment, Service, UpdateUser, User, UserWithServices},
         response_struct::ApiResponse,
     },
 };
@@ -12,58 +12,6 @@ use actix_web::{HttpResponse, Responder, web};
 use sqlx::PgPool;
 use uuid::Uuid;
 
-/* -------------------------------------------------------------------------- */
-/*                                      -                                     */
-/* -------------------------------------------------------------------------- */
-
-async fn create_user(pool: web::Data<PgPool>, body: web::Json<CreateUser>) -> impl Responder {
-    let new_user = body.into_inner();
-
-    match sqlx::query_as!(
-        User,
-        r#"
-        INSERT INTO users (
-            username, business_name, email, location, phone_number, 
-            description, phone_number_is_whatsapp
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
-        RETURNING *
-        "#,
-        new_user.username,
-        new_user.business_name,
-        new_user.email,
-        new_user.location,
-        new_user.phone_number,
-        new_user.description,
-        new_user.phone_number_is_whatsapp.unwrap_or(false)
-    )
-    .fetch_one(pool.get_ref())
-    .await
-    {
-        Ok(created_user) => HttpResponse::Created().json(ApiResponse {
-            message: Some("User created successfully".to_string()),
-            data: Some(created_user),
-            success: true,
-        }),
-
-        Err(sqlx::Error::Database(db_err)) => {
-            if db_err.is_unique_violation() {
-                conflict_reponse("Username or email already exists".to_string())
-            } else {
-                internal_server_error_response(db_err.to_string())
-            }
-        }
-
-        Err(e) => internal_server_error_response(e.to_string()),
-    }
-}
-
-/* -------------------------------------------------------------------------- */
-/*                                      -                                     */
-/* -------------------------------------------------------------------------- */
-/* -------------------------------------------------------------------------- */
-/*                                      -                                     */
-/* -------------------------------------------------------------------------- */
 /* -------------------------------------------------------------------------- */
 /*                                      -                                     */
 /* -------------------------------------------------------------------------- */
@@ -329,7 +277,6 @@ pub fn user_config(cfg: &mut web::ServiceConfig) {
             )
             .route("/{id}", web::get().to(get_user_by_id))
             .route("/{id}", web::patch().to(update_user))
-            .route("", web::get().to(get_all_users))
-            .route("", web::post().to(create_user)),
+            .route("", web::get().to(get_all_users)),
     );
 }

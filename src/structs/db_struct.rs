@@ -74,17 +74,6 @@ pub struct User {
 }
 
 #[derive(Deserialize)]
-pub struct CreateUser {
-    pub username: String,
-    pub business_name: String,
-    pub email: String,
-    pub location: Option<String>,
-    pub phone_number: Option<String>,
-    pub description: Option<String>,
-    pub phone_number_is_whatsapp: Option<bool>,
-}
-
-#[derive(Deserialize)]
 pub struct UpdateUser {
     pub username: Option<String>,
     pub business_name: Option<String>,
