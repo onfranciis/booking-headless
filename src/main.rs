@@ -5,7 +5,7 @@ mod utils;
 
 use crate::{
     routes::{
-        appointment_routes, service_routes, user_routes,
+        appointment_routes, auth_routes, service_routes, user_routes,
         utils_routes::{home, route_not_found},
     },
     utils::response_utils::{json_error_handler, path_error_handler},
@@ -44,6 +44,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new(pool.clone()))
             .app_data(path_config)
             .app_data(json_config)
+            .configure(auth_routes::auth_config)
             .configure(user_routes::user_config)
             .configure(service_routes::service_config)
             .configure(appointment_routes::appointment_config)

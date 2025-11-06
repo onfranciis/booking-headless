@@ -24,11 +24,15 @@ CREATE TABLE
     IF NOT EXISTS auth (
         id UUID PRIMARY KEY DEFAULT uuid_generate_v4 (),
         user_id UUID NOT NULL REFERENCES users (id),
-        password_hash VARCHAR(512) NOT NULL,
-        reset_token VARCHAR(512),
-        reset_token_expiry TIMESTAMPTZ,
+        google_id VARCHAR(255) NOT NULL,
+        refresh_token TEXT,
         created_at TIMESTAMPTZ DEFAULT NOW (),
-        updated_at TIMESTAMPTZ DEFAULT NOW ()
+        updated_at TIMESTAMPTZ DEFAULT NOW (),
+        --
+        -- Ensures a user can only have one auth entry
+        CONSTRAINT auth_user_id_key UNIQUE (user_id),
+        -- Ensures a Google ID can only be used once
+        CONSTRAINT auth_google_id_key UNIQUE (google_id)
     );
 
 CREATE TABLE

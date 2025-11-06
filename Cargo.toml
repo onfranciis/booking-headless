@@ -17,3 +17,9 @@ sqlx = { version = "0.8.6", features = [
     "rust_decimal",
 ] }
 uuid = { version = "1.18.1", features = ["v4", "serde"] }
+oauth2 = { version = "5.0.0", features = ["reqwest"] }
+reqwest = { version = "0.12.5", default-features = false, features = [
+    "json",
+    "rustls-tls",
+] }
+jsonwebtoken = { version = "10.1.0", features = ["rust_crypto"] }
