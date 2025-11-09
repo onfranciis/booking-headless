@@ -109,7 +109,6 @@ pub struct Service {
 
 #[derive(Deserialize)]
 pub struct CreateService {
-    pub user_id: Uuid,
     pub service_name: String,
     pub description: Option<String>,
     pub price: Option<Decimal>,
@@ -163,4 +162,26 @@ pub struct CreateAppointment {
     pub customer_email: Option<String>,
     pub customer_phone: Option<String>,
     pub appointment_time: DateTime<Utc>,
+}
+
+#[derive(Serialize)]
+pub struct GoogleCalendarEvent {
+    pub summary: String,
+    pub description: String,
+    pub start: GoogleEventDateTime,
+    pub end: GoogleEventDateTime,
+    pub attendees: Vec<GoogleEventAttendee>,
+}
+
+#[derive(Serialize)]
+pub struct GoogleEventDateTime {
+    #[serde(rename = "dateTime")]
+    pub date_time: String,
+    #[serde(rename = "timeZone")]
+    pub time_zone: String,
+}
+
+#[derive(Serialize)]
+pub struct GoogleEventAttendee {
+    pub email: String,
 }

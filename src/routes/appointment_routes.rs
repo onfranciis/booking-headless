@@ -3,11 +3,16 @@ use crate::{
         bad_request_response, internal_server_error_response, not_found_response,
     },
     structs::{
-        db_struct::{Appointment, CreateAppointment},
+        db_struct::{
+            Appointment, Auth, CreateAppointment, GoogleCalendarEvent, GoogleEventAttendee,
+            GoogleEventDateTime,
+        },
         response_struct::ApiResponse,
     },
+    utils::auth_utils::get_new_access_token,
 };
 use actix_web::{HttpResponse, Responder, web};
+use chrono::Duration;
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -17,7 +22,14 @@ async fn create_appointment(
 ) -> impl Responder {
     let new_appt = body.into_inner();
 
-    match sqlx::query_as!(
+    // Start a transaction
+    let mut tx = match pool.begin().await {
+        Ok(tx) => tx,
+        Err(e) => return internal_server_error_response(e.to_string()),
+    };
+
+    // Save the appointment to OUR database first
+    let appointment = match sqlx::query_as!(
         Appointment,
         r#"
         INSERT INTO appointments (
@@ -34,24 +46,124 @@ async fn create_appointment(
         new_appt.customer_phone,
         new_appt.appointment_time
     )
-    .fetch_one(pool.get_ref())
+    .fetch_one(&mut *tx)
     .await
     {
-        Ok(appointment) => HttpResponse::Created().json(ApiResponse {
-            success: true,
-            data: Some(appointment),
-            message: Some("Appointment created successfully".to_string()),
-        }),
+        Ok(appointment) => appointment,
 
         Err(sqlx::Error::Database(db_err)) => {
+            tx.rollback().await.ok();
+
             if db_err.is_foreign_key_violation() {
-                bad_request_response("Invalid service_id or business_id provided.".to_string())
+                return bad_request_response("Invalid service_id or business_id.".to_string());
             } else {
-                internal_server_error_response(db_err.to_string())
+                return internal_server_error_response(db_err.to_string());
             }
         }
-        Err(e) => internal_server_error_response(e.to_string()),
+
+        Err(e) => {
+            tx.rollback().await.ok();
+            return internal_server_error_response(e.to_string());
+        }
+    };
+
+    // Get the business's Google Refresh Token
+    let auth_record = match sqlx::query_as!(
+        Auth,
+        r#"SELECT * FROM auth WHERE user_id = $1"#,
+        new_appt.business_id
+    )
+    .fetch_one(&mut *tx) // Continue using the transaction
+    .await
+    {
+        Ok(auth) => auth,
+
+        Err(_) => {
+            tx.rollback().await.ok();
+
+            return internal_server_error_response(
+                "Could not find auth credentials for this business.".to_string(),
+            );
+        }
+    };
+
+    // Call Google Calendar API to create the event
+    if let Some(refresh_token) = auth_record.refresh_token {
+        let http_client = reqwest::Client::new();
+
+        // Get a new Access Token from Google
+        let access_token = match get_new_access_token(&http_client, refresh_token).await {
+            Ok(token) => token,
+
+            Err(e) => {
+                tx.rollback().await.ok();
+
+                return internal_server_error_response(e);
+            }
+        };
+
+        // Build the Calendar Event
+        // (Assuming a 30-minute duration for now)
+        let start_time = new_appt.appointment_time;
+        let end_time = start_time + Duration::minutes(30);
+
+        let event = GoogleCalendarEvent {
+            summary: format!("Appointment with {}", new_appt.customer_name),
+            description: format!(
+                "Customer Phone: {}\nCustomer Email: {}",
+                new_appt.customer_phone.as_deref().unwrap_or("N/A"),
+                new_appt.customer_email.as_deref().unwrap_or("N/A")
+            ),
+            start: GoogleEventDateTime {
+                date_time: start_time.to_rfc3339(),
+                time_zone: "UTC".to_string(),
+            },
+            end: GoogleEventDateTime {
+                date_time: end_time.to_rfc3339(),
+                time_zone: "UTC".to_string(),
+            },
+            attendees: vec![
+                // Add the customer as an attendee so they get an invite
+                GoogleEventAttendee {
+                    email: new_appt.customer_email.unwrap_or_default(),
+                },
+            ],
+        };
+
+        // Send the event to Google
+        let res = http_client
+            .post("https://www.googleapis.com/calendar/v3/calendars/primary/events?sendUpdates=all")
+            .bearer_auth(access_token)
+            .json(&event)
+            .send()
+            .await;
+
+        if let Err(e) = res {
+            tx.rollback().await.ok();
+            return internal_server_error_response(format!(
+                "Failed to create Google Calendar event: {}",
+                e
+            ));
+        }
+    } else {
+        println!(
+            "Business {} has no refresh token, skipping calendar sync.",
+            new_appt.business_id
+        );
     }
+
+    // Commit our local transaction
+    if let Err(e) = tx.commit().await {
+        return internal_server_error_response(e.to_string());
+    }
+
+    // Return success
+    let response = ApiResponse {
+        success: true,
+        data: Some(appointment),
+        message: Some("Appointment created successfully".to_string()),
+    };
+    HttpResponse::Created().json(response)
 }
 
 /* -------------------------------------------------------------------------- */
