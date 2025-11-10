@@ -5,7 +5,7 @@ use crate::{
     structs::{
         db_struct::{
             Appointment, Auth, CreateAppointment, GoogleCalendarEvent, GoogleEventAttendee,
-            GoogleEventDateTime,
+            GoogleEventDateTime, Service,
         },
         response_struct::ApiResponse,
     },
@@ -15,6 +15,10 @@ use actix_web::{HttpResponse, Responder, web};
 use chrono::Duration;
 use sqlx::PgPool;
 use uuid::Uuid;
+
+/* -------------------------------------------------------------------------- */
+/*                                      -                                     */
+/* -------------------------------------------------------------------------- */
 
 async fn create_appointment(
     pool: web::Data<PgPool>,
@@ -28,15 +32,39 @@ async fn create_appointment(
         Err(e) => return internal_server_error_response(e.to_string()),
     };
 
+    // Get the service duration
+    let service = match sqlx::query_as!(
+        Service,
+        r#"SELECT * FROM services WHERE id = $1"#,
+        new_appt.service_id
+    )
+    .fetch_one(&mut *tx)
+    .await
+    {
+        Ok(service) => service,
+
+        Err(_) => {
+            tx.rollback().await.ok();
+            return internal_server_error_response(
+                "Could not find the service details.".to_string(),
+            );
+        }
+    };
+
+    let start_time = new_appt.appointment_start_time;
+    let duration = service.duration_minutes.unwrap_or(30);
+    let end_time = start_time + Duration::minutes(duration as i64);
+
     // Save the appointment to OUR database first
     let appointment = match sqlx::query_as!(
         Appointment,
         r#"
         INSERT INTO appointments (
             service_id, business_id, customer_name, 
-            customer_email, customer_phone, appointment_time
+            customer_email, customer_phone, appointment_start_time,
+            appointment_end_time, notes
         )
-        VALUES ($1, $2, $3, $4, $5, $6)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         RETURNING *
         "#,
         new_appt.service_id,
@@ -44,7 +72,9 @@ async fn create_appointment(
         new_appt.customer_name,
         new_appt.customer_email,
         new_appt.customer_phone,
-        new_appt.appointment_time
+        start_time,
+        end_time,
+        new_appt.notes.unwrap_or("".to_string())
     )
     .fetch_one(&mut *tx)
     .await
@@ -73,21 +103,20 @@ async fn create_appointment(
         r#"SELECT * FROM auth WHERE user_id = $1"#,
         new_appt.business_id
     )
-    .fetch_one(&mut *tx) // Continue using the transaction
+    .fetch_one(&mut *tx)
     .await
     {
         Ok(auth) => auth,
 
         Err(_) => {
             tx.rollback().await.ok();
-
             return internal_server_error_response(
                 "Could not find auth credentials for this business.".to_string(),
             );
         }
     };
 
-    // Call Google Calendar API to create the event
+    // Call Google Calendar API
     if let Some(refresh_token) = auth_record.refresh_token {
         let http_client = reqwest::Client::new();
 
@@ -97,20 +126,18 @@ async fn create_appointment(
 
             Err(e) => {
                 tx.rollback().await.ok();
-
                 return internal_server_error_response(e);
             }
         };
 
-        // Build the Calendar Event
-        // (Assuming a 30-minute duration for now)
-        let start_time = new_appt.appointment_time;
-        let end_time = start_time + Duration::minutes(30);
-
         let event = GoogleCalendarEvent {
-            summary: format!("Appointment with {}", new_appt.customer_name),
+            summary: format!(
+                "Appointment Scheduled: \"{}\" for {}",
+                service.service_name, new_appt.customer_name
+            ),
             description: format!(
-                "Customer Phone: {}\nCustomer Email: {}",
+                "Service: {}\nCustomer Phone: {}\nCustomer Email: {}",
+                service.service_name,
                 new_appt.customer_phone.as_deref().unwrap_or("N/A"),
                 new_appt.customer_email.as_deref().unwrap_or("N/A")
             ),
@@ -161,8 +188,11 @@ async fn create_appointment(
     let response = ApiResponse {
         success: true,
         data: Some(appointment),
-        message: Some("Appointment created successfully".to_string()),
+        message: Some(
+            "Appointment created successfully and synced to Google Calendar.".to_string(),
+        ),
     };
+
     HttpResponse::Created().json(response)
 }
 

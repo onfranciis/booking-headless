@@ -207,7 +207,7 @@ async fn get_appointments_for_user(
         r#"
         SELECT * FROM appointments 
         WHERE business_id = $1
-        ORDER BY appointment_time DESC
+        ORDER BY appointment_start_time DESC
         "#,
         user_id
     )

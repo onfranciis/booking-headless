@@ -149,7 +149,9 @@ pub struct Appointment {
     pub customer_name: String,
     pub customer_email: Option<String>,
     pub customer_phone: Option<String>,
-    pub appointment_time: DateTime<Utc>,
+    pub appointment_start_time: DateTime<Utc>,
+    pub appointment_end_time: DateTime<Utc>,
+    pub notes: Option<String>,
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
 }
@@ -161,7 +163,8 @@ pub struct CreateAppointment {
     pub customer_name: String,
     pub customer_email: Option<String>,
     pub customer_phone: Option<String>,
-    pub appointment_time: DateTime<Utc>,
+    pub appointment_start_time: DateTime<Utc>,
+    pub notes: Option<String>,
 }
 
 #[derive(Serialize)]

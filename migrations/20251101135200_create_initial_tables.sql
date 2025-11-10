@@ -56,7 +56,9 @@ CREATE TABLE
         customer_name VARCHAR(255) NOT NULL,
         customer_email VARCHAR(255),
         customer_phone VARCHAR(20),
-        appointment_time TIMESTAMPTZ NOT NULL,
+        appointment_start_time TIMESTAMPTZ NOT NULL,
+        appointment_end_time TIMESTAMPTZ NOT NULL,
+        notes TEXT DEFAULT '',
         created_at TIMESTAMPTZ DEFAULT NOW (),
         updated_at TIMESTAMPTZ DEFAULT NOW ()
     );
