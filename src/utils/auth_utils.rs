@@ -1,15 +1,14 @@
-use std::env;
+use crate::config::Config;
+use actix_web::web;
 
 pub async fn get_new_access_token(
+    config: web::Data<Config>,
     client: &reqwest::Client,
     refresh_token: String,
 ) -> Result<String, String> {
-    let client_id = env::var("GOOGLE_CLIENT_ID").expect("Missing GOOGLE_CLIENT_ID");
-    let client_secret = env::var("GOOGLE_CLIENT_SECRET").expect("Missing GOOGLE_CLIENT_SECRET");
-
     let params = [
-        ("client_id", &client_id),
-        ("client_secret", &client_secret),
+        ("client_id", &config.google_client_id),
+        ("client_secret", &config.google_client_secret),
         ("refresh_token", &refresh_token),
         ("grant_type", &"refresh_token".to_string()),
     ];

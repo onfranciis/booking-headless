@@ -1,4 +1,5 @@
 use crate::{
+    config::Config,
     routes::utils_routes::{
         bad_request_response, internal_server_error_response, not_found_response,
     },
@@ -21,6 +22,7 @@ use uuid::Uuid;
 /* -------------------------------------------------------------------------- */
 
 async fn create_appointment(
+    config: web::Data<Config>,
     pool: web::Data<PgPool>,
     body: web::Json<CreateAppointment>,
 ) -> impl Responder {
@@ -121,7 +123,7 @@ async fn create_appointment(
         let http_client = reqwest::Client::new();
 
         // Get a new Access Token from Google
-        let access_token = match get_new_access_token(&http_client, refresh_token).await {
+        let access_token = match get_new_access_token(config, &http_client, refresh_token).await {
             Ok(token) => token,
 
             Err(e) => {
@@ -132,7 +134,7 @@ async fn create_appointment(
 
         let event = GoogleCalendarEvent {
             summary: format!(
-                "Appointment Scheduled: \"{}\" for {}",
+                "Appointment Scheduled: {} for {}",
                 service.service_name, new_appt.customer_name
             ),
             description: format!(

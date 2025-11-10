@@ -1,3 +1,4 @@
+use crate::config::Config;
 use crate::routes::utils_routes::{bad_request_response, internal_server_error_response};
 use crate::structs::db_struct::{Auth, GoogleCode, GoogleUserInfo, TokenClaims, User};
 use crate::structs::response_struct::ApiResponse;
@@ -10,10 +11,11 @@ use oauth2::{
 };
 use reqwest;
 use sqlx::PgPool;
-use std::env;
 
 // Helper to create the OAuth client
-fn create_google_oauth_client() -> oauth2::Client<
+fn create_google_oauth_client(
+    config: Config,
+) -> oauth2::Client<
     oauth2::StandardErrorResponse<oauth2::basic::BasicErrorResponseType>,
     oauth2::StandardTokenResponse<oauth2::EmptyExtraTokenFields, oauth2::basic::BasicTokenType>,
     oauth2::StandardTokenIntrospectionResponse<
@@ -28,17 +30,19 @@ fn create_google_oauth_client() -> oauth2::Client<
     oauth2::EndpointNotSet,
     oauth2::EndpointSet,
 > {
-    let google_client_id =
-        ClientId::new(env::var("GOOGLE_CLIENT_ID").expect("Missing GOOGLE_CLIENT_ID"));
-    let google_client_secret =
-        ClientSecret::new(env::var("GOOGLE_CLIENT_SECRET").expect("Missing GOOGLE_CLIENT_SECRET"));
+    let Config {
+        google_client_id,
+        google_client_secret,
+        google_redirect_uri,
+        ..
+    } = config.clone();
+    let google_client_id = ClientId::new(google_client_id);
+    let google_client_secret = ClientSecret::new(google_client_secret);
+    let redirect_uri = RedirectUrl::new(google_redirect_uri).expect("Invalid redirect URL");
     let auth_url = AuthUrl::new("https://accounts.google.com/o/oauth2/v2/auth".to_string())
         .expect("Invalid auth URL");
     let token_url = TokenUrl::new("https://www.googleapis.com/oauth2/v4/token".to_string())
         .expect("Invalid token URL");
-    let redirect_uri =
-        RedirectUrl::new(env::var("GOOGLE_REDIRECT_URI").expect("Missing GOOGLE_REDIRECT_URI"))
-            .expect("Invalid redirect URL");
 
     BasicClient::new(google_client_id)
         .set_client_secret(google_client_secret)
@@ -48,11 +52,12 @@ fn create_google_oauth_client() -> oauth2::Client<
 }
 
 async fn google_auth_handler(
+    config: web::Data<Config>,
     pool: web::Data<PgPool>,
     body: web::Json<GoogleCode>,
 ) -> impl Responder {
     println!("Received Google auth code: {}", body.code);
-    let oauth_client = create_google_oauth_client();
+    let oauth_client = create_google_oauth_client(config.get_ref().clone());
     println!("OAuth client created.");
     let http_client = reqwest::ClientBuilder::new()
         // Following redirects opens the client up to SSRF vulnerabilities.
@@ -194,7 +199,7 @@ async fn google_auth_handler(
     }
 
     // Create and issue our API's JWT
-    let jwt_secret = env::var("JWT_SECRET").expect("JWT_SECRET must be set");
+    let jwt_secret = &config.jwt_secret.clone();
     let now = Utc::now();
     let claims = TokenClaims {
         sub: user.id,
