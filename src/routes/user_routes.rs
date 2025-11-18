@@ -1,14 +1,20 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, time::Duration};
 
 use crate::{
+    config::Config,
     middlewares::auth_middleware::AuthenticatedUser,
-    routes::utils_routes::{conflict_reponse, internal_server_error_response, not_found_response},
+    routes::utils_routes::{
+        bad_request_response, conflict_reponse, internal_server_error_response, not_found_response,
+    },
     structs::{
         db_struct::{Appointment, Service, UpdateUser, User, UserWithServices},
         response_struct::ApiResponse,
+        util_struct::{UploadQuery, UploadResponse},
     },
+    utils::auth_utils::get_gcs_client,
 };
 use actix_web::{HttpResponse, Responder, web};
+use gcloud_storage::sign::{SignedURLMethod, SignedURLOptions};
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -266,10 +272,94 @@ async fn get_me(user: AuthenticatedUser, pool: web::Data<PgPool>) -> impl Respon
 /*                                      -                                     */
 /* -------------------------------------------------------------------------- */
 
+async fn get_user_upload_url(
+    user: AuthenticatedUser,
+    query: web::Query<UploadQuery>,
+    config: web::Data<Config>,
+    pool: web::Data<PgPool>,
+) -> impl Responder {
+    let user_id = user.user_id;
+    let upload_type = &query.upload_type;
+
+    // Validate the query type
+    let (db_column, file_path) = match upload_type.as_str() {
+        "cover" => ("cover_image_url", format!("users/{}/cover.jpg", user_id)),
+
+        "profile" => (
+            "profile_image_url",
+            format!("users/{}/profile.jpg", user_id),
+        ),
+
+        _ => {
+            return bad_request_response(
+                "Invalid upload type. Must be 'profile' or 'cover'".to_string(),
+            );
+        }
+    };
+
+    let client = get_gcs_client(&config).await;
+    let bucket_name = &config.gcs_bucket_name;
+
+    // Generate the signed URL for uploading
+    let options = SignedURLOptions {
+        expires: Duration::from_secs(60 * 7), // 7 minutes
+        method: SignedURLMethod::PUT,
+        ..Default::default()
+    };
+
+    let signed_url = match client
+        .signed_url(bucket_name, &file_path, None, None, options)
+        .await
+    {
+        Ok(url) => url,
+        Err(e) => return internal_server_error_response(e.to_string()),
+    };
+
+    // Generate the final public URL
+    let public_url = format!(
+        "https://storage.googleapis.com/{}/{}",
+        bucket_name, file_path
+    );
+
+    // Update the user's database record
+    // We use a dynamic query because we can't use `query_as!` with a dynamic column name
+    let query_str = format!("UPDATE users SET {} = $1 WHERE id = $2", db_column);
+    if let Err(e) = sqlx::query(&query_str)
+        .bind(&public_url)
+        .bind(user_id)
+        .execute(pool.get_ref())
+        .await
+    {
+        return internal_server_error_response(e.to_string());
+    }
+
+    let response = ApiResponse {
+        success: true,
+        data: Some(UploadResponse {
+            signed_upload_url: signed_url,
+            public_url: public_url,
+        }),
+        message: Some("Upload URL generated.".to_string()),
+    };
+
+    HttpResponse::Ok().json(response)
+}
+
+/* -------------------------------------------------------------------------- */
+/*                                      -                                     */
+/* -------------------------------------------------------------------------- */
+/* -------------------------------------------------------------------------- */
+/*                                      -                                     */
+/* -------------------------------------------------------------------------- */
+/* -------------------------------------------------------------------------- */
+/*                                      -                                     */
+/* -------------------------------------------------------------------------- */
+
 pub fn user_config(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/users")
             .route("/me", web::get().to(get_me))
+            .route("/me/upload-url", web::get().to(get_user_upload_url))
             .route("/with-services", web::get().to(get_all_users_with_services))
             .route(
                 "/{id}/appointments",

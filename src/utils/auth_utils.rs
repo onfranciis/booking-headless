@@ -1,5 +1,6 @@
 use crate::config::Config;
 use actix_web::web;
+use gcloud_storage::client::{Client, ClientConfig};
 
 pub async fn get_new_access_token(
     config: web::Data<Config>,
@@ -31,4 +32,13 @@ pub async fn get_new_access_token(
         .as_str()
         .map(|s| s.to_string())
         .ok_or_else(|| "Failed to parse access_token from Google".to_string())
+}
+
+pub async fn get_gcs_client(_config: &Config) -> Client {
+    let client_config = ClientConfig::default()
+        .with_auth()
+        .await
+        .expect("Failed to authenticate with Google Cloud");
+
+    Client::new(client_config)
 }
