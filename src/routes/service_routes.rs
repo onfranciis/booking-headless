@@ -1,12 +1,18 @@
+use std::time::Duration;
+
 use crate::{
+    config::Config,
     middlewares::auth_middleware::AuthenticatedUser,
     routes::utils_routes::{internal_server_error_response, not_found_response},
     structs::{
         db_struct::{CreateService, Service, UpdateService},
         response_struct::ApiResponse,
+        util_struct::UploadResponse,
     },
+    utils::auth_utils::get_gcs_client,
 };
 use actix_web::{HttpResponse, Responder, web};
+use gcloud_storage::sign::{SignedURLMethod, SignedURLOptions};
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -303,11 +309,101 @@ async fn delete_service(
 /*                                      -                                     */
 /* -------------------------------------------------------------------------- */
 
+async fn get_service_upload_url(
+    path: web::Path<Uuid>,
+    user: AuthenticatedUser,
+    config: web::Data<Config>,
+    pool: web::Data<PgPool>,
+) -> impl Responder {
+    let service_id = path.into_inner();
+    let user_id = user.user_id;
+
+    // Check ownership
+    let service = match sqlx::query_as!(Service, "SELECT * FROM services WHERE id = $1", service_id)
+        .fetch_one(pool.get_ref())
+        .await
+    {
+        Ok(service) => service,
+
+        Err(sqlx::Error::RowNotFound) => {
+            return not_found_response("Service not found".to_string());
+        }
+
+        Err(e) => return internal_server_error_response(e.to_string()),
+    };
+
+    if service.user_id != user_id {
+        return HttpResponse::Forbidden().json(ApiResponse::<()> {
+            success: false,
+            data: None,
+            message: Some("You do not have permission to edit this service.".to_string()),
+        });
+    }
+
+    // Generate URLs
+    let file_path = format!("services/{}/image.jpg", service_id);
+    let bucket_name = &config.gcs_bucket_name;
+    let client = get_gcs_client(&config).await;
+
+    let options = SignedURLOptions {
+        expires: Duration::from_secs(60 * 7), // 7 minutes
+        method: SignedURLMethod::PUT,
+        ..Default::default()
+    };
+
+    let signed_url = match client
+        .signed_url(bucket_name, &file_path, None, None, options)
+        .await
+    {
+        Ok(url) => url,
+        Err(e) => return internal_server_error_response(e.to_string()),
+    };
+
+    let public_url = format!(
+        "https://storage.googleapis.com/{}/{}",
+        bucket_name, file_path
+    );
+
+    // Update the service record
+    if let Err(e) = sqlx::query!(
+        "UPDATE services SET image_url = $1 WHERE id = $2",
+        public_url,
+        service_id
+    )
+    .execute(pool.get_ref())
+    .await
+    {
+        return internal_server_error_response(e.to_string());
+    }
+
+    let response = ApiResponse {
+        success: true,
+        data: Some(UploadResponse {
+            signed_upload_url: signed_url,
+            public_url: public_url,
+        }),
+        message: Some("Upload URL generated.".to_string()),
+    };
+
+    HttpResponse::Ok().json(response)
+}
+
+/* -------------------------------------------------------------------------- */
+/*                                      -                                     */
+/* -------------------------------------------------------------------------- */
+/* -------------------------------------------------------------------------- */
+/*                                      -                                     */
+/* -------------------------------------------------------------------------- */
+/* -------------------------------------------------------------------------- */
+/*                                      -                                     */
+/* -------------------------------------------------------------------------- */
+
 pub fn service_config(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/services")
             .route("", web::post().to(create_service))
             .route("", web::get().to(get_all_services))
+            .route("/{id}/upload-url", web::get().to(get_service_upload_url))
             .route("/{id}", web::get().to(get_service_by_id))
             .route("/{id}", web::patch().to(update_service))
             .route("/{id}", web::delete().to(delete_service)),
