@@ -31,3 +31,22 @@ pub fn json_error_handler(err: error::JsonPayloadError, _req: &HttpRequest) -> e
 
     error::InternalError::from_response(err, http_response).into()
 }
+
+pub fn query_error_handler(err: error::QueryPayloadError, _req: &HttpRequest) -> error::Error {
+    let error_message = match &err {
+        error::QueryPayloadError::Deserialize(query_err) => {
+            format!("Invalid query in request url: {}", query_err.to_string())
+        }
+        _ => format!("Invalid request: {}", err.to_string()),
+    };
+
+    let error_response = ApiResponse::<()> {
+        success: false,
+        data: None,
+        message: Some(error_message),
+    };
+
+    let http_response = HttpResponse::BadRequest().json(error_response);
+
+    error::InternalError::from_response(err, http_response).into()
+}

@@ -10,7 +10,7 @@ use crate::{
         appointment_routes, auth_routes, service_routes, user_routes,
         utils_routes::{home, route_not_found},
     },
-    utils::response_utils::{json_error_handler, path_error_handler},
+    utils::response_utils::{json_error_handler, path_error_handler, query_error_handler},
 };
 use actix_web::{App, HttpServer, web};
 use sqlx::postgres::PgPoolOptions;
@@ -40,12 +40,14 @@ async fn main() -> std::io::Result<()> {
     HttpServer::new(move || {
         let path_config = web::PathConfig::default().error_handler(path_error_handler);
         let json_config = web::JsonConfig::default().error_handler(json_error_handler);
+        let query_config = web::QueryConfig::default().error_handler(query_error_handler);
 
         App::new()
             .app_data(web::Data::new(config.clone()))
             .app_data(web::Data::new(pool.clone()))
             .app_data(path_config)
             .app_data(json_config)
+            .app_data(query_config)
             .configure(auth_routes::auth_config)
             .configure(user_routes::user_config)
             .configure(service_routes::service_config)
