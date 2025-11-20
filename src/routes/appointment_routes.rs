@@ -34,6 +34,29 @@ async fn create_appointment(
         Err(e) => return internal_server_error_response(e.to_string()),
     };
 
+    // Check if the business is active
+    let user_status = sqlx::query_scalar!(
+        r#"SELECT is_active as "is_active!: bool" FROM users WHERE id = $1"#,
+        new_appt.business_id
+    )
+    .fetch_optional(&mut *tx)
+    .await;
+
+    match user_status {
+        Ok(Some(true)) => {}
+
+        Ok(Some(false)) => {
+            tx.rollback().await.ok();
+            return bad_request_response(
+                "This business is not currently accepting appointments.".to_string(),
+            );
+        }
+        _ => {
+            tx.rollback().await.ok();
+            return bad_request_response("Invalid business_id or business not found.".to_string());
+        }
+    }
+
     // Get the service duration
     let service = match sqlx::query_as!(
         Service,

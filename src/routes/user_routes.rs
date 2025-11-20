@@ -7,7 +7,7 @@ use crate::{
         bad_request_response, conflict_reponse, internal_server_error_response, not_found_response,
     },
     structs::{
-        db_struct::{Appointment, Service, UpdateUser, User, UserWithServices},
+        db_struct::{Appointment, Service, UpdateUser, User, UserStatus, UserWithServices},
         response_struct::ApiResponse,
         util_struct::{UploadQuery, UploadResponse},
     },
@@ -52,7 +52,7 @@ async fn get_user_by_id(path: web::Path<Uuid>, pool: web::Data<PgPool>) -> impl 
 /* -------------------------------------------------------------------------- */
 
 async fn get_all_users(pool: web::Data<PgPool>) -> impl Responder {
-    match sqlx::query_as!(User, "SELECT * FROM users")
+    match sqlx::query_as!(User, "SELECT * FROM users WHERE is_active = TRUE")
         .fetch_all(pool.get_ref())
         .await
     {
@@ -78,7 +78,7 @@ async fn get_all_users(pool: web::Data<PgPool>) -> impl Responder {
 
 async fn get_all_users_with_services(pool: web::Data<PgPool>) -> impl Responder {
     // Fetch all users
-    let users_result = sqlx::query_as!(User, r#"SELECT * FROM users"#)
+    let users_result = sqlx::query_as!(User, r#"SELECT * FROM users WHERE is_active = TRUE"#)
         .fetch_all(pool.get_ref())
         .await;
 
@@ -355,11 +355,59 @@ async fn get_user_upload_url(
 /*                                      -                                     */
 /* -------------------------------------------------------------------------- */
 
+async fn set_account_status(
+    user: AuthenticatedUser,
+    body: web::Json<UserStatus>,
+    pool: web::Data<PgPool>,
+) -> impl Responder {
+    let user_id = user.user_id;
+    let status = body.status.unwrap_or(false);
+
+    match sqlx::query_as!(
+        User,
+        r#"
+        UPDATE users 
+        SET is_active = $1,
+        updated_at = NOW() 
+        WHERE id = $2 
+        RETURNING *
+        "#,
+        status,
+        user_id
+    )
+    .fetch_one(pool.get_ref())
+    .await
+    {
+        Ok(updated_user) => {
+            let response = ApiResponse {
+                success: true,
+                data: Some(updated_user),
+                message: Some("Account status updated successfully.".to_string()),
+            };
+
+            HttpResponse::Ok().json(response)
+        }
+
+        Err(e) => internal_server_error_response(e.to_string()),
+    }
+}
+
+/* -------------------------------------------------------------------------- */
+/*                                      -                                     */
+/* -------------------------------------------------------------------------- */
+/* -------------------------------------------------------------------------- */
+/*                                      -                                     */
+/* -------------------------------------------------------------------------- */
+/* -------------------------------------------------------------------------- */
+/*                                      -                                     */
+/* -------------------------------------------------------------------------- */
+
 pub fn user_config(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/users")
             .route("/me", web::get().to(get_me))
             .route("/me/upload-url", web::get().to(get_user_upload_url))
+            .route("/me/status", web::patch().to(set_account_status))
             .route("/with-services", web::get().to(get_all_users_with_services))
             .route(
                 "/{id}/appointments",

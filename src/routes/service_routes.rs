@@ -102,11 +102,35 @@ async fn get_service_by_id(path: web::Path<Uuid>, pool: web::Data<PgPool>) -> im
     .fetch_one(pool.get_ref())
     .await
     {
-        Ok(service) => HttpResponse::Ok().json(ApiResponse {
-            success: true,
-            data: Some(service),
-            message: Some("Service retrieved successfully".to_string()),
-        }),
+        Ok(service) => {
+            let user_is_active = sqlx::query_scalar!(
+                r#"SELECT is_active as "is_active!: bool" FROM users WHERE id = $1"#,
+                service.user_id
+            )
+            .fetch_optional(pool.get_ref())
+            .await;
+
+            match user_is_active {
+                Ok(Some(true)) => HttpResponse::Ok().json(ApiResponse {
+                    success: true,
+                    data: Some(service),
+                    message: Some("Service retrieved successfully".to_string()),
+                }),
+
+                Ok(Some(false)) => {
+                    let response = ApiResponse::<()> {
+                        success: false,
+                        data: None,
+                        message: Some("The owner of this service is not active".to_string()),
+                    };
+
+                    return HttpResponse::Forbidden().json(response);
+                }
+                _ => {
+                    return not_found_response("User not found.".to_string());
+                }
+            }
+        }
 
         Err(sqlx::Error::RowNotFound) => not_found_response("Service not found".to_string()),
 

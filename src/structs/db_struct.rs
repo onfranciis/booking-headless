@@ -68,6 +68,7 @@ pub struct User {
     pub is_verified: Option<bool>,
     pub google_is_connected: Option<bool>,
     pub phone_number_is_whatsapp: Option<bool>,
+    pub is_active: Option<bool>,
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
     pub last_login: Option<DateTime<Utc>>,
@@ -82,6 +83,11 @@ pub struct UpdateUser {
     pub phone_number: Option<String>,
     pub description: Option<String>,
     pub phone_number_is_whatsapp: Option<bool>,
+}
+
+#[derive(Deserialize)]
+pub struct UserStatus {
+    pub status: Option<bool>,
 }
 
 /* -------------------------------------------------------------------------- */

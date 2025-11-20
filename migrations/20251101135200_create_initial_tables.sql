@@ -15,6 +15,7 @@ CREATE TABLE
         is_verified BOOLEAN DEFAULT FALSE,
         google_is_connected BOOLEAN DEFAULT FALSE,
         phone_number_is_whatsapp BOOLEAN DEFAULT FALSE,
+        is_active BOOLEAN DEFAULT TRUE,
         created_at TIMESTAMPTZ DEFAULT NOW (),
         updated_at TIMESTAMPTZ DEFAULT NOW (),
         last_login TIMESTAMPTZ DEFAULT NOW ()
