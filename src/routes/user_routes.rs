@@ -29,20 +29,40 @@ use uuid::Uuid;
 async fn get_user_by_id(path: web::Path<Uuid>, pool: web::Data<PgPool>) -> impl Responder {
     let user_id = path.into_inner();
 
-    match sqlx::query_as!(User, "SELECT * FROM users WHERE id = $1", user_id)
+    let profile = match sqlx::query_as!(User, r#"SELECT * FROM users WHERE id = $1"#, user_id)
         .fetch_one(pool.get_ref())
         .await
     {
-        Ok(user) => HttpResponse::Ok().json(ApiResponse {
-            message: Some("User retrieved successfully".to_string()),
-            data: Some(user),
-            success: true,
+        Ok(user) => user,
+
+        Err(sqlx::Error::RowNotFound) => return not_found_response("User not found".to_string()),
+
+        Err(e) => return internal_server_error_response(e.to_string()),
+    };
+
+    let availability = match sqlx::query_as!(
+        AvailabilityRule,
+        r#"SELECT * FROM business_availability WHERE user_id = $1"#,
+        user_id
+    )
+    .fetch_all(pool.get_ref())
+    .await
+    {
+        Ok(rules) => rules,
+
+        Err(e) => return internal_server_error_response(e.to_string()),
+    };
+
+    let response = ApiResponse {
+        success: true,
+        message: None,
+        data: Some(MergedUserProfile {
+            profile,
+            availability,
         }),
+    };
 
-        Err(sqlx::Error::RowNotFound) => not_found_response("User not found".to_string()),
-
-        Err(e) => internal_server_error_response(e.to_string()),
-    }
+    return HttpResponse::ServiceUnavailable().json(response);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -247,7 +267,7 @@ async fn get_appointments_for_user(
 async fn get_me(user: AuthenticatedUser, pool: web::Data<PgPool>) -> impl Responder {
     let logged_in_user_id = user.user_id;
 
-    match sqlx::query_as!(
+    let profile = match sqlx::query_as!(
         User,
         r#"SELECT * FROM users WHERE id = $1"#,
         logged_in_user_id
@@ -255,15 +275,36 @@ async fn get_me(user: AuthenticatedUser, pool: web::Data<PgPool>) -> impl Respon
     .fetch_one(pool.get_ref())
     .await
     {
-        Ok(user) => HttpResponse::Ok().json(ApiResponse {
-            success: true,
-            data: Some(user),
-            message: None,
-        }),
+        Ok(user) => user,
 
-        Err(sqlx::Error::RowNotFound) => not_found_response("User not found".to_string()),
-        Err(e) => internal_server_error_response(e.to_string()),
-    }
+        Err(sqlx::Error::RowNotFound) => return not_found_response("User not found".to_string()),
+
+        Err(e) => return internal_server_error_response(e.to_string()),
+    };
+
+    let availability = match sqlx::query_as!(
+        AvailabilityRule,
+        r#"SELECT * FROM business_availability WHERE user_id = $1"#,
+        logged_in_user_id
+    )
+    .fetch_all(pool.get_ref())
+    .await
+    {
+        Ok(rules) => rules,
+
+        Err(e) => return internal_server_error_response(e.to_string()),
+    };
+
+    let response = ApiResponse {
+        success: true,
+        message: None,
+        data: Some(MergedUserProfile {
+            profile,
+            availability,
+        }),
+    };
+
+    return HttpResponse::ServiceUnavailable().json(response);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -506,6 +547,7 @@ pub fn user_config(cfg: &mut web::ServiceConfig) {
             .route("/me", web::get().to(get_me))
             .route("/me/upload-url", web::get().to(get_user_upload_url))
             .route("/me/status", web::patch().to(set_account_status))
+            .route("/me/availability", web::post().to(set_user_availability))
             .route("/with-services", web::get().to(get_all_users_with_services))
             .route(
                 "/{id}/appointments",
