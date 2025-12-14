@@ -10,6 +10,7 @@ pub struct Config {
     pub port: u16,
     pub gcs_bucket_name: String,
     pub google_service_account_path: String, // Path to the downloaded JSON key
+    pub redis_url: String,
 }
 
 impl Config {
@@ -36,6 +37,7 @@ impl Config {
             google_client_secret: expect_env("GOOGLE_CLIENT_SECRET"),
             google_redirect_uri: expect_env("GOOGLE_REDIRECT_URI"),
             gcs_bucket_name: expect_env("GCS_BUCKET_NAME"),
+            redis_url: expect_env("REDIS_URL"),
             google_service_account_path,
             port,
         }

@@ -27,6 +27,12 @@ gcloud-storage = { version = "1.1.1", default-features = false, features = [
     "rustls-tls",
     "auth",
 ] }
-time = { version = "0.3.34", features = ["serde", "macros", "formatting", "parsing"] }
+time = { version = "0.3.34", features = [
+    "serde",
+    "macros",
+    "formatting",
+    "parsing",
+] }
 chrono = "0.4.42"
 chrono-tz = "0.10.4"
+deadpool-redis = "0.22"

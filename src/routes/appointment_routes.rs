@@ -14,6 +14,7 @@ use crate::{
     utils::{auth_utils::get_new_access_token, others_utils::convert_to_local_primitive},
 };
 use actix_web::{HttpResponse, Responder, web};
+use deadpool_redis::redis;
 use sqlx::PgPool;
 use time::{Duration, format_description::well_known::Rfc3339};
 use uuid::Uuid;
@@ -27,6 +28,7 @@ async fn create_appointment(
     pool: web::Data<PgPool>,
     body: web::Json<CreateAppointment>,
     http_client: web::Data<reqwest::Client>,
+    redis_pool: web::Data<deadpool_redis::Pool>,
 ) -> impl Responder {
     let new_appt = body.into_inner();
 
@@ -304,6 +306,21 @@ async fn create_appointment(
 
     if let Err(e) = tx.commit().await {
         return internal_server_error_response(format!("Failed to commit transaction: {}", e));
+    }
+
+    // Cache result
+    let date_str = start_time.date().to_string(); // Helper to get YYYY-MM-DD
+    let cache_key = format!(
+        "slots:{}:{}:{}",
+        new_appt.business_id, date_str, new_appt.service_id
+    );
+
+    if let Ok(mut conn) = redis_pool.get().await {
+        let _: () = redis::cmd("DEL")
+            .arg(&cache_key)
+            .query_async(&mut conn)
+            .await
+            .unwrap_or(());
     }
 
     let response = ApiResponse {

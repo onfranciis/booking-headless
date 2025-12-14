@@ -24,6 +24,7 @@ use crate::{
 };
 use actix_web::{HttpResponse, Responder, web};
 use chrono_tz::Tz;
+use deadpool_redis::redis;
 use gcloud_storage::sign::{SignedURLMethod, SignedURLOptions};
 use sqlx::PgPool;
 use std::str::FromStr;
@@ -464,9 +465,31 @@ async fn get_available_slots(
     pool: web::Data<PgPool>,
     config: web::Data<Config>,
     http_client: web::Data<reqwest::Client>,
+    redis_pool: web::Data<deadpool_redis::Pool>,
 ) -> impl Responder {
     let user_id = path.into_inner();
     let date_str = &query.date;
+    let cache_key = format!("slots:{}:{}:{}", user_id, query.date, query.service_id);
+    let mut conn = redis_pool.get().await.unwrap();
+
+    // Try to get from cache first
+    let cached: Option<String> = redis::cmd("GET")
+        .arg(&cache_key)
+        .query_async(&mut conn)
+        .await
+        .unwrap_or(None);
+
+    if let Some(json_str) = cached {
+        let slots: Vec<TimeSlot> = serde_json::from_str(&json_str).unwrap();
+
+        println!("Cache hit for key: {}", cache_key);
+
+        return HttpResponse::Ok().json(ApiResponse {
+            success: true,
+            data: Some(slots),
+            message: None,
+        });
+    }
 
     let format = match format_description::parse("[year]-[month]-[day]") {
         Ok(f) => f,
@@ -628,6 +651,18 @@ async fn get_available_slots(
             current_open_naive += step;
         }
     }
+
+    // Cache the result
+    let json_response = serde_json::to_string(&available_slots).unwrap();
+
+    let _: () = redis::cmd("SET")
+        .arg(&cache_key)
+        .arg(json_response)
+        .arg("EX")
+        .arg(60 * 5)
+        .query_async(&mut conn)
+        .await
+        .unwrap();
 
     HttpResponse::Ok().json(ApiResponse {
         success: true,

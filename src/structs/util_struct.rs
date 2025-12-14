@@ -21,7 +21,7 @@ pub struct SlotQuery {
     pub service_id: Uuid,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 pub struct TimeSlot {
     pub start_time: String, // ISO 8601 / RFC 3339
     pub end_time: String,
