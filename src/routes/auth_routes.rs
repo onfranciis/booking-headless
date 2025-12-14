@@ -55,6 +55,7 @@ async fn google_auth_handler(
     config: web::Data<Config>,
     pool: web::Data<PgPool>,
     body: web::Json<GoogleCode>,
+    injected_http_client: web::Data<reqwest::Client>,
 ) -> impl Responder {
     println!("Received Google auth code: {}", body.code);
     let oauth_client = create_google_oauth_client(config.get_ref().clone());
@@ -91,8 +92,7 @@ async fn google_auth_handler(
     );
 
     // Use the access token to get the user's info from Google
-    let client = reqwest::Client::new();
-    let user_info_res = client
+    let user_info_res = injected_http_client
         .get("https://www.googleapis.com/oauth2/v3/userinfo")
         .bearer_auth(access_token)
         .send()
