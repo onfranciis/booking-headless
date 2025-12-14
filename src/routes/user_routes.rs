@@ -8,13 +8,19 @@ use crate::{
     },
     structs::{
         db_struct::{
-            Appointment, AvailabilityRule, Service, SetAvailability, UpdateUser, User, UserStatus,
-            UserWithServices,
+            Appointment, Auth, AvailabilityRule, Service, SetAvailability, UpdateUser, User,
+            UserStatus, UserWithServices,
         },
         response_struct::{ApiResponse, MergedUserProfile},
-        util_struct::{SlotQuery, TimeSlot, UploadQuery, UploadResponse},
+        util_struct::{
+            FreeBusyRequest, FreeBusyRequestItem, FreeBusyResponse, SlotQuery, TimeSlot,
+            UploadQuery, UploadResponse,
+        },
     },
-    utils::{auth_utils::get_gcs_client, others_utils::local_to_utc},
+    utils::{
+        auth_utils::{get_gcs_client, get_new_access_token},
+        others_utils::local_to_utc,
+    },
 };
 use actix_web::{HttpResponse, Responder, web};
 use chrono_tz::Tz;
@@ -22,7 +28,8 @@ use gcloud_storage::sign::{SignedURLMethod, SignedURLOptions};
 use sqlx::PgPool;
 use std::str::FromStr;
 use time::{
-    Date, Duration as TimeDuration, OffsetDateTime, PrimitiveDateTime, Time, format_description,
+    Date, Duration as TimeDuration, OffsetDateTime, PrimitiveDateTime, Time,
+    format_description::{self, well_known::Rfc3339},
 };
 use uuid::Uuid;
 
@@ -239,7 +246,7 @@ async fn get_appointments_for_user(
     match sqlx::query_as!(
         Appointment,
         r#"
-        SELECT * FROM appointments 
+        SELECT * FROM appointments
         WHERE business_id = $1
         ORDER BY appointment_start_time DESC
         "#,
@@ -455,6 +462,7 @@ async fn get_available_slots(
     path: web::Path<Uuid>,
     query: web::Query<SlotQuery>,
     pool: web::Data<PgPool>,
+    config: web::Data<Config>,
 ) -> impl Responder {
     let user_id = path.into_inner();
     let date_str = &query.date;
@@ -521,7 +529,10 @@ async fn get_available_slots(
     let utc_window_start = local_to_utc(day_start_naive, &tz).unwrap();
     let utc_window_end = local_to_utc(day_end_naive, &tz).unwrap();
 
-    let appointments = match sqlx::query_as!(
+    // We will collect ALL unavailable times (DB + Google) into this vector
+    let mut blocked_periods: Vec<(OffsetDateTime, OffsetDateTime)> = Vec::new();
+
+    let db_appointments = match sqlx::query_as!(
         Appointment,
         "SELECT * FROM appointments WHERE business_id = $1
         AND appointment_end_time > $2
@@ -537,46 +548,92 @@ async fn get_available_slots(
         Err(e) => return internal_server_error_response(e.to_string()),
     };
 
+    // Add DB appointments to blocked list
+    for appt in db_appointments {
+        blocked_periods.push((appt.appointment_start_time, appt.appointment_end_time));
+    }
+
+    let auth_record = sqlx::query_as!(Auth, "SELECT * FROM auth WHERE user_id = $1", user_id)
+        .fetch_optional(pool.get_ref())
+        .await
+        .unwrap_or(None);
+
+    if let Some(auth) = auth_record {
+        if let Some(refresh_token) = auth.refresh_token {
+            let http_client = reqwest::Client::new();
+
+            if let Ok(access_token) =
+                get_new_access_token(config, &http_client, refresh_token).await
+            {
+                let freebusy_request = FreeBusyRequest {
+                    time_min: utc_window_start.format(&Rfc3339).unwrap(),
+                    time_max: utc_window_end.format(&Rfc3339).unwrap(),
+                    items: vec![FreeBusyRequestItem {
+                        id: "primary".to_string(),
+                    }],
+                };
+
+                let freebusy_response = http_client
+                    .post("https://www.googleapis.com/calendar/v3/freeBusy")
+                    .bearer_auth(access_token)
+                    .json(&freebusy_request)
+                    .send()
+                    .await;
+
+                if let Ok(res) = freebusy_response {
+                    if let Ok(parsed) = res.json::<FreeBusyResponse>().await {
+                        if let Some(calendar) = parsed.calendars.get("primary") {
+                            for busy_slot in &calendar.busy {
+                                let start = OffsetDateTime::parse(&busy_slot.start, &Rfc3339).ok();
+                                let end = OffsetDateTime::parse(&busy_slot.end, &Rfc3339).ok();
+
+                                if let (Some(s), Some(e)) = (start, end) {
+                                    blocked_periods.push((s, e));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Generate Slots And Check Collisions
     let mut available_slots: Vec<TimeSlot> = Vec::new();
     let step = TimeDuration::minutes(30);
 
     for rule in rules {
-        let mut current_naive = PrimitiveDateTime::new(requested_date, rule.open_time);
-        let close_naive = PrimitiveDateTime::new(requested_date, rule.close_time);
+        let mut current_open_naive = PrimitiveDateTime::new(requested_date, rule.open_time);
+        let current_close_naive = PrimitiveDateTime::new(requested_date, rule.close_time);
 
-        while current_naive + TimeDuration::minutes(duration_minuites) <= close_naive {
-            let slot_end_naive = current_naive + TimeDuration::minutes(duration_minuites);
+        while current_open_naive + TimeDuration::minutes(duration_minuites) <= current_close_naive {
+            let slot_end_naive = current_open_naive + TimeDuration::minutes(duration_minuites);
 
-            if let Some(slot_start_utc) = local_to_utc(current_naive, &tz) {
+            // Convert to UTC for comparison
+            if let Some(slot_start_utc) = local_to_utc(current_open_naive, &tz) {
                 if let Some(slot_end_utc) = local_to_utc(slot_end_naive, &tz) {
-                    let is_clashing = appointments.iter().any(|appt| {
-                        // Overlap logic: (StartA < EndB) and (EndA > StartB)
-                        appt.appointment_start_time < slot_end_utc
-                            && appt.appointment_end_time > slot_start_utc
+                    let is_clashing = blocked_periods.iter().any(|(busy_start, busy_end)| {
+                        // Overlap Logic: (StartA < EndB) and (EndA > StartB)
+                        *busy_start < slot_end_utc && *busy_end > slot_start_utc
                     });
 
                     if !is_clashing {
                         available_slots.push(TimeSlot {
-                            start_time: slot_start_utc
-                                .format(&time::format_description::well_known::Rfc3339)
-                                .unwrap(),
-
-                            end_time: slot_end_utc
-                                .format(&time::format_description::well_known::Rfc3339)
-                                .unwrap(),
+                            start_time: slot_start_utc.format(&Rfc3339).unwrap(),
+                            end_time: slot_end_utc.format(&Rfc3339).unwrap(),
                         });
                     }
                 }
             }
 
-            current_naive += step;
+            current_open_naive += step;
         }
     }
 
     HttpResponse::Ok().json(ApiResponse {
         success: true,
         data: Some(available_slots),
-        message: Some("All available slots have been retrieved".to_string()),
+        message: None,
     })
 }
 
