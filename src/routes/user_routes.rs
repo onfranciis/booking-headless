@@ -463,6 +463,7 @@ async fn get_available_slots(
     query: web::Query<SlotQuery>,
     pool: web::Data<PgPool>,
     config: web::Data<Config>,
+    http_client: web::Data<reqwest::Client>,
 ) -> impl Responder {
     let user_id = path.into_inner();
     let date_str = &query.date;
@@ -492,7 +493,7 @@ async fn get_available_slots(
         Err(_) => return not_found_response("Service not found.".to_string()),
     };
 
-    let duration_minuites = service.duration_minutes.unwrap_or(30) as i64;
+    let duration_minutes = service.duration_minutes.unwrap_or(30) as i64;
     let weekday = requested_date.weekday().number_from_monday() as i32;
 
     let rules = match sqlx::query_as!(
@@ -560,8 +561,6 @@ async fn get_available_slots(
 
     if let Some(auth) = auth_record {
         if let Some(refresh_token) = auth.refresh_token {
-            let http_client = reqwest::Client::new();
-
             if let Ok(access_token) =
                 get_new_access_token(config, &http_client, refresh_token).await
             {
@@ -606,8 +605,8 @@ async fn get_available_slots(
         let mut current_open_naive = PrimitiveDateTime::new(requested_date, rule.open_time);
         let current_close_naive = PrimitiveDateTime::new(requested_date, rule.close_time);
 
-        while current_open_naive + TimeDuration::minutes(duration_minuites) <= current_close_naive {
-            let slot_end_naive = current_open_naive + TimeDuration::minutes(duration_minuites);
+        while current_open_naive + TimeDuration::minutes(duration_minutes) <= current_close_naive {
+            let slot_end_naive = current_open_naive + TimeDuration::minutes(duration_minutes);
 
             // Convert to UTC for comparison
             if let Some(slot_start_utc) = local_to_utc(current_open_naive, &tz) {

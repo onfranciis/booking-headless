@@ -26,6 +26,7 @@ async fn create_appointment(
     config: web::Data<Config>,
     pool: web::Data<PgPool>,
     body: web::Json<CreateAppointment>,
+    http_client: web::Data<reqwest::Client>,
 ) -> impl Responder {
     let new_appt = body.into_inner();
 
@@ -98,7 +99,7 @@ async fn create_appointment(
         );
     }
 
-    // Calculate Time & Check Availability
+    // Calculate Time And Check Availability
     let start_time = new_appt.appointment_start_time;
     let duration = service.duration_minutes.unwrap_or(30);
     let end_time = start_time + Duration::minutes(duration as i64);
@@ -194,8 +195,6 @@ async fn create_appointment(
 
     // Google Calendar Sync
     if let Some(refresh_token) = auth_record.refresh_token {
-        let http_client = reqwest::Client::new();
-
         let access_token = match get_new_access_token(config, &http_client, refresh_token).await {
             Ok(token) => token,
 
@@ -303,12 +302,10 @@ async fn create_appointment(
         return expectation_failed_response(message);
     }
 
-    // Commit Transaction
     if let Err(e) = tx.commit().await {
         return internal_server_error_response(format!("Failed to commit transaction: {}", e));
     }
 
-    // Return Success
     let response = ApiResponse {
         success: true,
         data: Some(appointment),

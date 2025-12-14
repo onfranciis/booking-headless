@@ -19,6 +19,7 @@ use sqlx::postgres::PgPoolOptions;
 async fn main() -> std::io::Result<()> {
     let config = Config::from_env();
     let bind_address = format!("127.0.0.1:{}", config.port);
+    let http_client = reqwest::Client::new();
 
     let pool = PgPoolOptions::new()
         .max_connections(5)
@@ -45,6 +46,7 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .app_data(web::Data::new(config.clone()))
             .app_data(web::Data::new(pool.clone()))
+            .app_data(web::Data::new(http_client.clone()))
             .app_data(path_config)
             .app_data(json_config)
             .app_data(query_config)
