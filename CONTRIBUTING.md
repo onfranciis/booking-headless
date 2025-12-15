@@ -55,6 +55,12 @@ We utilize a strict `.env` configuration.
 cp .env.example .env
 ```
 
+To ensure your commits always pass CI, please install the git hook:
+
+```bash
+cp scripts/pre-commit.sh .git/hooks/pre-commit
+```
+
 > **Important:** You must fill in `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in `.env` if you intend to work on Authentication features.
 
 ### 3\. Start Infrastructure

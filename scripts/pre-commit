@@ -1,0 +1,27 @@
+#!/bin/sh
+
+# Print a message so you know it's running
+echo "Checking SQLx offline data..."
+
+# Run the prepare command
+# The --check flag prevents it from modifying files silently (optional preference),
+# but here we usually want to just run it to generate the file.
+# We run with -- --lib to ensure it covers the library target.
+cargo sqlx prepare -- --lib
+
+# Capture the exit code of the previous command
+EXIT_CODE=$?
+
+# If it failed (e.g. DB not running, query error), stop the commit
+if [ $EXIT_CODE -ne 0 ]; then
+    echo "❌ SQLx preparation failed. Commit aborted."
+    echo "   Ensure your DB is running and 'cargo sqlx prepare' passes."
+    exit 1
+fi
+
+# Check if sqlx-data.json was modified by the command
+# If it changed, we need to add it to the commit automatically.
+git add sqlx-data.json
+
+echo "✅ SQLx data is fresh."
+exit 0
