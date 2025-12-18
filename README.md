@@ -123,8 +123,8 @@ This provides a complete definition of all endpoints, request schemas, and respo
 
 1.  **Clone the Repository**
 
-    ```bash
-    git clone [https://github.com/onfranciis/booking-headless(https://github.com/onfranciis/booking-headless)
+     ```bash
+    git clone https://github.com/onfranciis/booking-headless.git
     cd booking-api
     ```
 
