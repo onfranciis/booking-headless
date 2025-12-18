@@ -123,9 +123,9 @@ This provides a complete definition of all endpoints, request schemas, and respo
 
 1.  **Clone the Repository**
 
-    ```bash
-    git clone [https://github.com/YOUR_USERNAME/booking-api.git](https://github.com/YOUR_USERNAME/booking-api.git)
-    cd booking-api
+     ```bash
+    git clone https://github.com/onfranciis/booking-headless.git
+    cd booking-headless
     ```
 
 2.  **Environment Setup**
