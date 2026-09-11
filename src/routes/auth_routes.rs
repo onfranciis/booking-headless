@@ -71,10 +71,6 @@ async fn google_auth_handler(
 
     // Get the refresh token (only provided on first login/consent)
     let refresh_token = token.refresh_token().map(|t| t.secret().to_string());
-    println!(
-        "Refresh Token: {}",
-        refresh_token.as_deref().unwrap_or("None")
-    );
 
     // Use the access token to get the user's info from Google
     let user_info_res = injected_http_client
@@ -82,9 +78,6 @@ async fn google_auth_handler(
         .bearer_auth(access_token)
         .send()
         .await;
-
-    println!("User info request sent");
-    println!("User info: {:#?}", user_info_res);
 
     let user_info: GoogleUserInfo = match user_info_res {
         Ok(res) => match res.json().await {
@@ -115,7 +108,7 @@ async fn google_auth_handler(
         .email
         .unwrap_or_else(|| format!("user_{}@example.com", user_info.sub));
 
-    let name = user_info.name.unwrap_or_else(|| "My Business".to_string());
+    let name = user_info.name.unwrap_or_else(|| email.to_string());
 
     // Find or Create the User (based on email)
     // This query finds a user by email. If they don't exist, it creates them.

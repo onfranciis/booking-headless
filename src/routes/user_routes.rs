@@ -582,8 +582,6 @@ pub async fn get_available_slots(
     if let Some(json_str) = cached {
         let slots: Vec<TimeSlot> = serde_json::from_str(&json_str).unwrap();
 
-        println!("Cache hit for key: {}", cache_key);
-
         return HttpResponse::Ok().json(ApiResponse {
             success: true,
             data: Some(slots),
