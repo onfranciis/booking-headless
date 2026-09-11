@@ -170,6 +170,10 @@ We welcome contributions from the community\! Whether it's updating docs or opti
 
 👉 **[Read our Contributing Guide](./CONTRIBUTING.md)** for details on the architecture, testing strategy, and code of conduct.
 
+## 🔒 Security
+
+If you discover a security vulnerability, please report it responsibly rather than opening a public issue. See [SECURITY.md](./SECURITY.md) for details.
+
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](./LICENCE) file for details.
+This project is licensed under the MIT License - see the [LICENSE](./LICENSE) file for details.

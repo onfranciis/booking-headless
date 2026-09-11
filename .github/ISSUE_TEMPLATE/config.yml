@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security Vulnerability
+    url: https://github.com/onfranciis/booking-headless/security/policy
+    about: Please report security vulnerabilities per SECURITY.md instead of a public issue.

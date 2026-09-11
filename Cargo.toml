@@ -2,6 +2,9 @@
 name = "booking"
 version = "0.1.0"
 edition = "2024"
+license = "MIT"
+repository = "https://github.com/onfranciis/booking-headless"
+homepage = "https://github.com/onfranciis/booking-headless"
 
 [dependencies]
 rust_decimal = { version = "1.39.0", features = ["serde"] }
